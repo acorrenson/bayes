@@ -1,6 +1,6 @@
 import re
 from tokenizer import tokenize
-from classifier import Dataset2
+from classifier import *
 from generator import generate_data
 
 
@@ -11,54 +11,41 @@ def load(f):
     return filter(lambda x: x != [], (list(tokenize(l)) for l in lines))
 
 
-def print_prediction(w, p):
-    pA = p['A']
-    pB = p['B']
-    print('scores:')
-    print(f'A: {pA}')
-    print(f'B: {pB}')
-    if pA > pB:
-        print(f'{w} is predicted to be of class A')
-    else:
-        print(f'{w} is predicted to be of class B')
-
-
-def evaluate(Ntrain: int, Ntest: int):
-    train_data_A = list(generate_data(Ntrain, True))
-    train_data_B = list(generate_data(Ntrain, False))
-    model = Dataset2(train_data_A, train_data_B)
-
+def evaluate_model(model: BayesianModel, Ntest: int, debug=False):
     test_data_A = list(generate_data(Ntest, True))
     test_data_B = list(generate_data(Ntest, False))
 
     def check(w, label):
-        pred = model.predict(w)
-        plabel = 'A' if pred['A'] > pred['B'] else 'B'
-        return label == plabel
+        return label == model.predict(w).get_class()
 
     score_A = 0
     for point in test_data_A:
-        score_A += int(check(point, 'A'))
+        score_A += int(check(point, True))
 
     score_B = 0
     for point in test_data_B:
-        score_B += int(check(point, 'B'))
+        score_B += int(check(point, False))
 
-    print("results:")
-    print(f"A: {score_A}/{Ntest}")
-    print(f"B: {score_B}/{Ntest}")
-    print(f"overall: {100 * (score_A + score_B)/(2 * Ntest)}%")
+    score = 100 * (score_A + score_B)/(2 * Ntest)
+    if debug:
+        print("results:")
+        print(f"A: {score_A}/{Ntest}")
+        print(f"B: {score_B}/{Ntest}")
+        print(f"overall: {score}%")
+    return score
 
 
 if __name__ == "__main__":
-    for _ in range(10):
-        evaluate(1000, 10)
-    # dataA = list(generate_data(10, True))
-    # dataB = list(generate_data(10, False))
-    # dataset = Dataset2(dataA, dataB)
-    # for data in dataA:
-    #     print(" ".join(data))
-    # for data in dataB:
-    #     print(" ".join(data))
-    # w = input("sentence> ").strip().split(' ')
-    # print_prediction(w, dataset.predict(w))
+    for i in range(10):
+        print('-' * 100)
+        print(f'Evaluation batch {i}')
+
+        dataA = list(generate_data(500, True))
+        dataB = list(generate_data(500, False))
+        data = Dataset2(dataA, dataB)
+        model_1 = NaiveBayesian(data)
+        model_2 = NaiveBayesianSmooth(data)
+        print(
+            f'model 1 (Naive Bayesian)                     : {evaluate_model(model_1, 10)}')
+        print(
+            f'model 2 (Naive Bayesian + Laplace smoothing) : {evaluate_model(model_2, 10)}')

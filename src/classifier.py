@@ -1,4 +1,5 @@
 
+from dataclasses import dataclass
 from functools import reduce
 import operator
 from typing import Dict, List
@@ -17,8 +18,8 @@ class Dataset2:
         self._nb_words_B: int = 0
         self._nb_words_total: int = 0
 
-        self._proba_x_A: Dict[str, int] = dict()
-        self._proba_x_B: Dict[str, int] = dict()
+        self._occ_x_A: Dict[str, int] = dict()
+        self._occ_x_B: Dict[str, int] = dict()
 
         self._proba_A: float = 0
         self._proba_B: float = 0
@@ -31,14 +32,19 @@ class Dataset2:
         self._proba_A = self._nb_words_A / self._nb_words_total
         self._proba_B = self._nb_words_B / self._nb_words_total
 
-    def count(self, x, label: bool):
-        store = self._points_A if label else self._points_B
-        c = 0
-        for point in store:
-            for w in point:
-                if w == x:
-                    c += 1
-        return c
+    def occurrences(self, w: str, label: bool):
+        points = self._points_A if label else self._points_B
+        memo = self._occ_x_A if label else self._occ_x_B
+        occ_w = memo.get(w)
+        if occ_w == None:
+            c = 0
+            for point in points:
+                for p in point:
+                    if w == p:
+                        c += 1
+            memo[w] = c
+            return c
+        return occ_w
 
     def size(self, label: bool):
         if label:
@@ -46,25 +52,48 @@ class Dataset2:
         else:
             return self._nb_words_B
 
-    def proba(self, x: str, label: bool):
-        store = self._proba_x_A if label else self._proba_x_B
-        px = store.get(x)
-        if px is None:
-            px = self.count(x, label) / self.size(label)
-            store[x] = px
-        return px
 
-    def proba_smooth(self, x, label: bool):
-        store = self._proba_x_A if label else self._proba_x_B
-        px = store.get(x)
-        if px is None:
-            px = (self.count(x, label) + 1) / (self.size(label) + 2)
-            store[x] = px
-        return px
+@dataclass
+class Prediction:
+    score_A: float
+    score_B: float
 
-    def predict(self, w: List[str]):
-        pw_A = self._proba_A * \
-            reduce(operator.mul, map(lambda x: self.proba(x, True), w))
-        pw_B = self._proba_B * \
-            reduce(operator.mul, map(lambda x: self.proba(x, False), w))
-        return {'A': pw_A, 'B': pw_B}
+    def get_class(self):
+        if self.score_A > self.score_B:
+            return True
+        else:
+            return False
+
+
+class BayesianModel:
+    def __init__(self, data: Dataset2):
+        self._data = data
+
+    def size(self, label: bool):
+        return self._data.size(label)
+
+    def occurences(self, w: str, label: bool):
+        return self._data.occurrences(w, label)
+
+    def proba_sentence(self, s: List[str], label: bool):
+        assert False, "not implemented"
+
+    def predict(self, s: List[str]) -> Prediction:
+        return Prediction(self.proba_sentence(s, True), self.proba_sentence(s, False))
+
+
+class NaiveBayesian(BayesianModel):
+    def proba_sentence(self, s: List[str], label: bool):
+        num = reduce(operator.mul, map(lambda w: self.occurences(w, label), s))
+        den = self.size(label) ** len(s)
+        # print(f'P({" ".join(s)} | {label}) = {num}/{den}')
+        return num/den
+
+
+class NaiveBayesianSmooth(BayesianModel):
+    def proba_sentence(self, s: List[str], label: bool):
+        num = reduce(operator.mul, map(
+            lambda w: self.occurences(w, label) + 1, s))
+        den = (self.size(label) + 2) ** len(s)
+        # print(f'P({" ".join(s)} | {label}) = {num}/{den}')
+        return num/den
